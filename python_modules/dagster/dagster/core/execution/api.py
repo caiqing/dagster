@@ -195,11 +195,17 @@ def execute_pipeline(
     )
     event_list = list(initialization_manager.generate_setup_events())
     pipeline_context = initialization_manager.get_object()
-    if pipeline_context:
-        event_list.extend(
-            _pipeline_execution_iterator(pipeline_context, execution_plan, pipeline_run)
-        )
-    event_list.extend(initialization_manager.generate_teardown_events())
+    try:
+        if pipeline_context:
+            event_list.extend(
+                _pipeline_execution_iterator(pipeline_context, execution_plan, pipeline_run)
+            )
+        event_list.extend(initialization_manager.generate_teardown_events())
+    finally:
+        # Should only be triggered in the test environment, where raise_on_error=True.
+        # Still want to make sure we make a best effort to perform the appropriate teardown
+        if not initialization_manager.did_teardown:
+            event_list.extend(initialization_manager.generate_teardown_events())
     return PipelineExecutionResult(
         pipeline,
         run_config.run_id,
