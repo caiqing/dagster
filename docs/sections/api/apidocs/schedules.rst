@@ -9,3 +9,4 @@ Schedules
 .. autodecorator:: daily_schedule
 
 .. autoclass:: ScheduleDefinition
+.. autoclass:: ScheduleExecutionContext
