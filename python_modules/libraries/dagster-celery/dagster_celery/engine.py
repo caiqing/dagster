@@ -55,8 +55,10 @@ class CeleryEngine(Engine):
 
         app = make_app(celery_config)
 
+        run_priority = _get_run_priority(pipeline_context)
         priority_for_step = lambda step: (
-            -1 * int(step.tags.get('dagster-celery/priority', task_default_priority))
+            -1
+            * (int(step.tags.get('dagster-celery/priority', task_default_priority)) + run_priority)
         )
         priority_for_key = lambda step_key: (
             priority_for_step(execution_plan.get_step_by_key(step_key))
@@ -182,6 +184,15 @@ def _submit_task(app, pipeline_context, step, queue):
     return task_signature.apply_async(
         priority=priority, queue=queue, routing_key='{queue}.execute_query'.format(queue=queue),
     )
+
+
+def _get_run_priority(context):
+    if not context.has_tag('dagster/run_priority'):
+        return 0
+    try:
+        return int(context.get_tag('dagster/run_priority'))
+    except ValueError:
+        return 0
 
 
 def _warn_on_priority_misuse(context, execution_plan):

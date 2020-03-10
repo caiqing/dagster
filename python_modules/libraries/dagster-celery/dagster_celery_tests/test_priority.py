@@ -1,4 +1,6 @@
 import os
+import threading
+import time
 from collections import OrderedDict
 from contextlib import contextmanager
 
@@ -10,6 +12,7 @@ from dagster_celery.cli import main
 from dagster import (
     ExecutionTargetHandle,
     ModeDefinition,
+    RunConfig,
     default_executors,
     execute_pipeline,
     pipeline,
@@ -28,7 +31,7 @@ celery_mode_defs = [ModeDefinition(executor_defs=default_executors + [celery_exe
 
 
 @contextmanager
-def execute_pipeline_on_celery(pipeline_name):
+def execute_pipeline_on_celery(pipeline_name, tags=None):
     with seven.TemporaryDirectory() as tempdir:
         handle = ExecutionTargetHandle.for_pipeline_python_file(__file__, pipeline_name)
         pipeline_def = handle.build_pipeline_definition()
@@ -40,12 +43,13 @@ def execute_pipeline_on_celery(pipeline_name):
                 'execution': {'celery': {}},
             },
             instance=instance,
+            run_config=RunConfig(tags=tags),
         )
         yield result
 
 
 @contextmanager
-def execute_eagerly_on_celery(pipeline_name):
+def execute_eagerly_on_celery(pipeline_name, tags=None):
     with seven.TemporaryDirectory() as tempdir:
         result = execute_pipeline(
             ExecutionTargetHandle.for_pipeline_python_file(
@@ -56,6 +60,7 @@ def execute_eagerly_on_celery(pipeline_name):
                 'execution': {'celery': {'config': {'config_source': {'task_always_eager': True}}}},
             },
             instance=DagsterInstance.local_temp(tempdir=tempdir),
+            run_config=RunConfig(tags=tags),
         )
         yield result
 
@@ -214,3 +219,28 @@ def test_eager_priority_pipeline():
             'one.compute',
             'zero.compute',
         ]
+
+
+def test_run_priority_pipeline():
+    def execute_on_thread(priority, done):
+        with execute_pipeline_on_celery(
+            'simple_priority_pipeline', {'dagster/run_priority': priority}
+        ) as result:
+            assert result.success
+            done.set()
+
+    lowpri = threading.Event()
+    hipri = threading.Event()
+    lowpri_thread = threading.Thread(target=execute_on_thread, args=(0, lowpri,))
+    lowpri_thread.daemon = True
+    lowpri_thread.start()
+    hipri_thread = threading.Thread(target=execute_on_thread, args=(1000, hipri,))
+    hipri_thread.daemon = True
+    hipri_thread.start()
+    time.sleep(1)
+    assert not lowpri.is_set()
+    assert not hipri.is_set()
+    with start_celery_worker():
+        hipri_thread.join()
+        assert hipri.is_set()
+        assert not lowpri.is_set()
