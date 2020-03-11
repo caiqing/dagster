@@ -128,3 +128,6 @@ dask-worker-space
 
 # Codemod bookmarks
 .codemod.bookmark
+
+# Instance profile (for telemetry)
+instance_profile.yaml
