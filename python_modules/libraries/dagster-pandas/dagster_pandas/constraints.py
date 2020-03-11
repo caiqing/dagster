@@ -177,7 +177,7 @@ class NonNullableColumnConstraint(ColumnConstraint):
 
 
 class UniqueColumnConstraint(ColumnConstraint):
-    def __init__(self, ignore_missing_vals=False):
+    def __init__(self, ignore_missing_vals):
         description = "Column must be unique."
         self.ignore_missing_vals = ignore_missing_vals
         super(UniqueColumnConstraint, self).__init__(
@@ -199,7 +199,7 @@ class UniqueColumnConstraint(ColumnConstraint):
 
 
 class CategoricalColumnConstraint(ColumnConstraint):
-    def __init__(self, categories, ignore_missing_vals=False):
+    def __init__(self, categories, ignore_missing_vals):
         self.categories = list(check.set_param(categories, 'categories', of_type=str))
         self.ignore_missing_vals = ignore_missing_vals
         super(CategoricalColumnConstraint, self).__init__(
@@ -222,7 +222,7 @@ class CategoricalColumnConstraint(ColumnConstraint):
 
 
 class MinValueColumnConstraint(ColumnConstraint):
-    def __init__(self, min_value, ignore_missing_vals=False):
+    def __init__(self, min_value, ignore_missing_vals):
         self.min_value = min_value
         self.ignore_missing_vals = ignore_missing_vals
         super(MinValueColumnConstraint, self).__init__(
@@ -245,7 +245,7 @@ class MinValueColumnConstraint(ColumnConstraint):
 
 
 class MaxValueColumnConstraint(ColumnConstraint):
-    def __init__(self, max_value, ignore_missing_vals=False):
+    def __init__(self, max_value, ignore_missing_vals):
         self.max_value = max_value
         self.ignore_missing_vals = ignore_missing_vals
         super(MaxValueColumnConstraint, self).__init__(
@@ -268,7 +268,7 @@ class MaxValueColumnConstraint(ColumnConstraint):
 
 
 class InRangeColumnConstraint(ColumnConstraint):
-    def __init__(self, min_value, max_value, ignore_missing_vals=False):
+    def __init__(self, min_value, max_value, ignore_missing_vals):
         self.min_value = min_value
         self.max_value = max_value
         self.ignore_missing_vals = ignore_missing_vals
