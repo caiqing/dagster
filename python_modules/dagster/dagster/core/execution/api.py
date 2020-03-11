@@ -125,8 +125,8 @@ def execute_run_iterator(pipeline, pipeline_run, instance):
         generator_closed = True
         raise
     finally:
-        if not generator_closed:
-            for event in initialization_manager.generate_teardown_events():
+        for event in initialization_manager.generate_teardown_events():
+            if not generator_closed:
                 yield event
 
 
@@ -347,8 +347,8 @@ def execute_plan_iterator(execution_plan, pipeline_run, environment_dict=None, i
         generator_closed = True
         raise
     finally:
-        if not generator_closed:
-            for event in initialization_manager.generate_teardown_events():
+        for event in initialization_manager.generate_teardown_events():
+            if not generator_closed:
                 yield event
 
 
