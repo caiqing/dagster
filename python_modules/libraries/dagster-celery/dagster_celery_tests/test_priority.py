@@ -1,6 +1,6 @@
 import os
-from collections import OrderedDict
 import time
+from collections import OrderedDict
 from contextlib import contextmanager
 
 import pytest
@@ -226,6 +226,12 @@ def sleep_solid(_):
 
 
 @pipeline(mode_defs=celery_mode_defs)
+def filler_pipeline():
+    for i in range(50):
+        sleep_solid.alias('filler' + str(i))()
+
+
+@pipeline(mode_defs=celery_mode_defs)
 def low_pipeline():
     sleep_solid.alias('low_one')()
     sleep_solid.alias('low_two')()
@@ -255,8 +261,10 @@ def hi_pipeline():
     sleep_solid.alias('hi_six')()
 
 
+@pytest.mark.skip
 def test_run_priority_pipeline():
     with seven.TemporaryDirectory() as tempdir:
+        execute_pipeline_on_celery(tempdir, 'filler_pipeline')
         mid = execute_pipeline_on_celery(tempdir, 'mid_pipeline', {'dagster/run_priority': 0})
         low = execute_pipeline_on_celery(tempdir, 'low_pipeline', {'dagster/run_priority': -5})
         hi = execute_pipeline_on_celery(tempdir, 'hi_pipeline', {'dagster/run_priority': 5})
