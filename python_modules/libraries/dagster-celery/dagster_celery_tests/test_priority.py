@@ -1,7 +1,6 @@
 import os
-import threading
-import time
 from collections import OrderedDict
+import time
 from contextlib import contextmanager
 
 import pytest
@@ -30,51 +29,48 @@ skip_ci = pytest.mark.skipif(
 celery_mode_defs = [ModeDefinition(executor_defs=default_executors + [celery_executor])]
 
 
-@contextmanager
-def execute_pipeline_on_celery(pipeline_name, tags=None):
-    with seven.TemporaryDirectory() as tempdir:
-        handle = ExecutionTargetHandle.for_pipeline_python_file(__file__, pipeline_name)
-        pipeline_def = handle.build_pipeline_definition()
-        instance = DagsterInstance.local_temp(tempdir=tempdir)
-        result = execute_pipeline(
-            pipeline_def,
-            environment_dict={
-                'storage': {'filesystem': {'config': {'base_dir': tempdir}}},
-                'execution': {'celery': {}},
-            },
-            instance=instance,
-            run_config=RunConfig(tags=tags),
-        )
-        yield result
+def execute_pipeline_on_celery(tempdir, pipeline_name, tags=None):
+    handle = ExecutionTargetHandle.for_pipeline_python_file(__file__, pipeline_name)
+    pipeline_def = handle.build_pipeline_definition()
+    instance = DagsterInstance.local_temp(tempdir=tempdir)
+    return execute_pipeline(
+        pipeline_def,
+        environment_dict={
+            'storage': {'filesystem': {'config': {'base_dir': tempdir}}},
+            'execution': {'celery': {}},
+        },
+        instance=instance,
+        run_config=RunConfig(tags=tags),
+    )
+
+
+def execute_eagerly_on_celery(tempdir, pipeline_name, tags=None):
+    return execute_pipeline(
+        ExecutionTargetHandle.for_pipeline_python_file(
+            __file__, pipeline_name
+        ).build_pipeline_definition(),
+        environment_dict={
+            'storage': {'filesystem': {'config': {'base_dir': tempdir}}},
+            'execution': {'celery': {'config': {'config_source': {'task_always_eager': True}}}},
+        },
+        instance=DagsterInstance.local_temp(tempdir=tempdir),
+        run_config=RunConfig(tags=tags),
+    )
 
 
 @contextmanager
-def execute_eagerly_on_celery(pipeline_name, tags=None):
-    with seven.TemporaryDirectory() as tempdir:
-        result = execute_pipeline(
-            ExecutionTargetHandle.for_pipeline_python_file(
-                __file__, pipeline_name
-            ).build_pipeline_definition(),
-            environment_dict={
-                'storage': {'filesystem': {'config': {'base_dir': tempdir}}},
-                'execution': {'celery': {'config': {'config_source': {'task_always_eager': True}}}},
-            },
-            instance=DagsterInstance.local_temp(tempdir=tempdir),
-            run_config=RunConfig(tags=tags),
-        )
-        yield result
-
-
-@contextmanager
-def start_celery_worker():
+def start_celery_worker(queue=None):
     runner = CliRunner()
-    result = runner.invoke(main, ['worker', 'start', '-d'])
+    runargs = ['worker', 'start', '-d']
+    if queue:
+        runargs += ['-q', queue]
+    result = runner.invoke(main, runargs)
     assert result.exit_code == 0, str(result.exception)
-
-    yield
-
-    result = runner.invoke(main, ['worker', 'terminate'])
-    assert result.exit_code == 0, str(result.exception)
+    try:
+        yield
+    finally:
+        result = runner.invoke(main, ['worker', 'terminate'])
+        assert result.exit_code == 0, str(result.exception)
 
 
 @solid(tags={'dagster-celery/priority': 0})
@@ -184,7 +180,8 @@ def priority_pipeline():
 @pytest.mark.skip
 @skip_ci
 def test_priority_pipeline():
-    with execute_pipeline_on_celery('priority_pipeline') as result:
+    with seven.TemporaryDirectory() as tempdir:
+        result = execute_pipeline_on_celery(tempdir, 'priority_pipeline')
         assert result.success
 
 
@@ -204,7 +201,8 @@ def simple_priority_pipeline():
 
 
 def test_eager_priority_pipeline():
-    with execute_eagerly_on_celery('simple_priority_pipeline') as result:
+    with seven.TemporaryDirectory() as tempdir:
+        result = execute_eagerly_on_celery(tempdir, 'simple_priority_pipeline')
         assert result.success
         assert list(OrderedDict.fromkeys([evt.step_key for evt in result.step_event_list])) == [
             'ten.compute',
@@ -221,26 +219,59 @@ def test_eager_priority_pipeline():
         ]
 
 
-def test_run_priority_pipeline():
-    def execute_on_thread(priority, done):
-        with execute_pipeline_on_celery(
-            'simple_priority_pipeline', {'dagster/run_priority': priority}
-        ) as result:
-            assert result.success
-            done.set()
+@solid
+def sleep_solid(_):
+    time.sleep(1.5)
+    return True
 
-    lowpri = threading.Event()
-    hipri = threading.Event()
-    lowpri_thread = threading.Thread(target=execute_on_thread, args=(0, lowpri,))
-    lowpri_thread.daemon = True
-    lowpri_thread.start()
-    hipri_thread = threading.Thread(target=execute_on_thread, args=(1000, hipri,))
-    hipri_thread.daemon = True
-    hipri_thread.start()
-    time.sleep(1)
-    assert not lowpri.is_set()
-    assert not hipri.is_set()
-    with start_celery_worker():
-        hipri_thread.join()
-        assert hipri.is_set()
-        assert not lowpri.is_set()
+
+@pipeline(mode_defs=celery_mode_defs)
+def low_pipeline():
+    sleep_solid.alias('low_one')()
+    sleep_solid.alias('low_two')()
+    sleep_solid.alias('low_three')()
+    sleep_solid.alias('low_four')()
+    sleep_solid.alias('low_five')()
+    sleep_solid.alias('low_six')()
+
+
+@pipeline(mode_defs=celery_mode_defs)
+def mid_pipeline():
+    sleep_solid.alias('mid_one')()
+    sleep_solid.alias('mid_two')()
+    sleep_solid.alias('mid_three')()
+    sleep_solid.alias('mid_four')()
+    sleep_solid.alias('mid_five')()
+    sleep_solid.alias('mid_six')()
+
+
+@pipeline(mode_defs=celery_mode_defs)
+def hi_pipeline():
+    sleep_solid.alias('hi_one')()
+    sleep_solid.alias('hi_two')()
+    sleep_solid.alias('hi_three')()
+    sleep_solid.alias('hi_four')()
+    sleep_solid.alias('hi_five')()
+    sleep_solid.alias('hi_six')()
+
+
+def test_run_priority_pipeline():
+    with seven.TemporaryDirectory() as tempdir:
+        mid = execute_pipeline_on_celery(tempdir, 'mid_pipeline', {'dagster/run_priority': 0})
+        low = execute_pipeline_on_celery(tempdir, 'low_pipeline', {'dagster/run_priority': -5})
+        hi = execute_pipeline_on_celery(tempdir, 'hi_pipeline', {'dagster/run_priority': 5})
+        instance = DagsterInstance.local_temp(tempdir)
+        running = True
+        while running:
+            lowstats = instance.get_run_stats(low.run_id)
+            histats = instance.get_run_stats(hi.run_id)
+            midstats = instance.get_run_stats(mid.run_id)
+            running = not lowstats.end_time
+            time.sleep(1)
+
+        assert midstats.start_time < lowstats.start_time
+        assert lowstats.start_time < histats.start_time
+
+        assert lowstats.end_time > midstats.end_time
+        assert lowstats.end_time > histats.end_time
+        assert midstats.end_time > histats.end_time

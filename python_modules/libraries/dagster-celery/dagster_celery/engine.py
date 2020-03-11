@@ -55,10 +55,9 @@ class CeleryEngine(Engine):
 
         app = make_app(celery_config)
 
-        run_priority = _get_run_priority(pipeline_context)
         priority_for_step = lambda step: (
-            -1
-            * (int(step.tags.get('dagster-celery/priority', task_default_priority)) + run_priority)
+            -1 * int(step.tags.get('dagster-celery/priority', task_default_priority))
+            + -1 * _get_run_priority(pipeline_context)
         )
         priority_for_key = lambda step_key: (
             priority_for_step(execution_plan.get_step_by_key(step_key))
@@ -155,7 +154,9 @@ class CeleryEngine(Engine):
 
 
 def _submit_task(app, pipeline_context, step, queue):
-    priority = int(step.tags.get('dagster-celery/priority', task_default_priority))
+    run_priority = _get_run_priority(pipeline_context)
+    step_priority = int(step.tags.get('dagster-celery/priority', task_default_priority))
+    priority = run_priority + step_priority
 
     task = create_task(app)
 
