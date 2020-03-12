@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pandas import DataFrame
 
 from dagster import check
@@ -179,7 +181,7 @@ class NonNullableColumnConstraint(ColumnConstraint):
 class UniqueColumnConstraint(ColumnConstraint):
     def __init__(self, ignore_missing_vals):
         description = "Column must be unique."
-        self.ignore_missing_vals = ignore_missing_vals
+        self.ignore_missing_vals = check.bool_param(ignore_missing_vals, 'ignore_missing_vals')
         super(UniqueColumnConstraint, self).__init__(
             error_description=description, markdown_description=description
         )
@@ -201,7 +203,7 @@ class UniqueColumnConstraint(ColumnConstraint):
 class CategoricalColumnConstraint(ColumnConstraint):
     def __init__(self, categories, ignore_missing_vals):
         self.categories = list(check.set_param(categories, 'categories', of_type=str))
-        self.ignore_missing_vals = ignore_missing_vals
+        self.ignore_missing_vals = check.bool_param(ignore_missing_vals, 'ignore_missing_vals')
         super(CategoricalColumnConstraint, self).__init__(
             error_description="Expected Categories are {}".format(self.categories),
             markdown_description="Category examples are {}...".format(self.categories[:5]),
@@ -223,8 +225,8 @@ class CategoricalColumnConstraint(ColumnConstraint):
 
 class MinValueColumnConstraint(ColumnConstraint):
     def __init__(self, min_value, ignore_missing_vals):
-        self.min_value = min_value
-        self.ignore_missing_vals = ignore_missing_vals
+        self.min_value = check.inst_param(min_value, 'min_value', (int, float, datetime))
+        self.ignore_missing_vals = check.bool_param(ignore_missing_vals, 'ignore_missing_vals')
         super(MinValueColumnConstraint, self).__init__(
             markdown_description="values > {}".format(self.min_value),
             error_description="Column must have values > {}".format(self.min_value),
@@ -246,8 +248,8 @@ class MinValueColumnConstraint(ColumnConstraint):
 
 class MaxValueColumnConstraint(ColumnConstraint):
     def __init__(self, max_value, ignore_missing_vals):
-        self.max_value = max_value
-        self.ignore_missing_vals = ignore_missing_vals
+        self.max_value = check.inst_param(max_value, 'max_value', (int, float, datetime))
+        self.ignore_missing_vals = check.bool_param(ignore_missing_vals, 'ignore_missing_vals')
         super(MaxValueColumnConstraint, self).__init__(
             markdown_description="values < {}".format(self.max_value),
             error_description="Column must have values < {}".format(self.max_value),
@@ -269,9 +271,9 @@ class MaxValueColumnConstraint(ColumnConstraint):
 
 class InRangeColumnConstraint(ColumnConstraint):
     def __init__(self, min_value, max_value, ignore_missing_vals):
-        self.min_value = min_value
-        self.max_value = max_value
-        self.ignore_missing_vals = ignore_missing_vals
+        self.min_value = check.inst_param(min_value, 'min_value', (int, float, datetime))
+        self.max_value = check.inst_param(max_value, 'max_value', (int, float, datetime))
+        self.ignore_missing_vals = check.bool_param(ignore_missing_vals, 'ignore_missing_vals')
         super(InRangeColumnConstraint, self).__init__(
             markdown_description="{} < values < {}".format(self.min_value, self.max_value),
             error_description="Column must have values between {} and {} inclusive.".format(
