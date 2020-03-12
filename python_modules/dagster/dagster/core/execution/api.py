@@ -84,17 +84,18 @@ def _pipeline_execution_iterator(pipeline_context, execution_plan, pipeline_run)
         # Shouldn't happen, but avoid runtime-exception in case this generator gets GC-ed
         # (see https://amir.rachum.com/blog/2017/03/03/generator-cleanup/).
         generator_closed = True
+        pipeline_success = False
         raise
     except (Exception, KeyboardInterrupt):
         pipeline_success = False
         raise  # finally block will run before this is re-raised
     finally:
+        if pipeline_success:
+            event = DagsterEvent.pipeline_success(pipeline_context)
+        else:
+            event = DagsterEvent.pipeline_failure(pipeline_context)
         if not generator_closed:
-            if pipeline_success:
-                yield DagsterEvent.pipeline_success(pipeline_context)
-
-            else:
-                yield DagsterEvent.pipeline_failure(pipeline_context)
+            yield event
 
 
 def execute_run_iterator(pipeline, pipeline_run, instance):
